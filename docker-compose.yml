@@ -1,0 +1,80 @@
+version: "3"
+
+services:
+  client:
+    build: ./client
+    container_name: client
+    restart: always
+    volumes:
+      # Only mount the source code to avoid overwriting node_modules
+      - ./client/src:/app/src
+      - ./client/public:/app/public
+      # Use a data volume for node_modules to avoid overwriting the one inside the container
+      - /app/node_modules
+    ports:
+      - 5173:5173
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true  
+    depends_on:
+      - server
+    networks:
+      - mongo_net
+
+  server:
+    build: ./server
+    container_name: server
+    environment:
+      - MONGODB_HOST=mongo
+      - MONGODB_PORT=27017
+      - DATABASE_NAME=db
+      - PORT=3001
+      - CHOKIDAR_USEPOLLING=true
+    ports:
+      - 3001:3001
+      - 9229:9229
+    volumes:
+      # Only mount the source code to avoid overwriting node_modules
+      - ./server/src:/app/src
+      - ./server/config:/app/config
+      - /app/node_modules
+    depends_on:
+      - mongo
+      - model
+    networks:
+      - mongo_net
+      - model_net
+
+  mongo:
+    image: mongo
+    container_name: mongo
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - mongo_net
+    command: mongod --bind_ip_all
+    # Healthcheck ensures that MongoDB is fully ready before server depends on it
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  model:
+    build: ./model
+    container_name: model
+    ports:
+      - 8000:8000
+    networks:
+      - model_net
+
+networks:
+  mongo_net:
+    driver: bridge
+  model_net:
+    driver: bridge
+
+volumes:
+  mongodb_data:
